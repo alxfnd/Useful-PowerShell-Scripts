@@ -72,6 +72,10 @@ Log "Removing Printer Connections"
 # Sleep 5 is workaround, con2prt.exe should finish before then
 Start-Process -FilePath "C:\tmp\PrintersConfig\Tools\con2prt.exe" -ArgumentList "/f" -NoNewWindow
 Sleep 5
+if (Get-Printer *Canon | Where {$_.type -eq 'Local'}) {
+    Remove-Printer *Canon
+    Remove-PrinterPort *Canon*
+}
 if ((Get-Printer *Canon* -ErrorAction Ignore) -or (Get-Printer *Plotter* -ErrorAction Ignore)) {
     Log "Detected connected printer. Failed to remove all."
     Cleanup
@@ -89,7 +93,7 @@ if (Get-PrinterDriver *Canon* -ErrorAction Ignore) {
 # Export then remove Servers registry key
 Log "Checking Servers Key from registry"
 $ServerKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Providers\Client Side Rendering Print Provider\Servers"
-if (Test-Path $ServerKey) {
+if (Test-Path $ServerKey\*) {
     Log "Exporting Servers Key from registry"
     # Count total items in key in case we need to roll back and validate
     $ServerKeyTotal = 0; foreach ($key in $ServerKey) { $ServerKeyTotal += (Get-ChildItem $key -Recurse).Length }
