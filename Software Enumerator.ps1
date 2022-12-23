@@ -1,4 +1,4 @@
-﻿cls
+cls
 $SoftwareList = @()
 $6432SoftwareList = @()
 
@@ -29,6 +29,7 @@ foreach ($a in $list) {
         DisplayVersion  = $item.GetValue("DisplayVersion")
         InstallLocation = $item.GetValue("InstallLocation")
         InstallDate     = BetterDateFormat -date $item
+        UninstallString = $item.GetValue("UninstallString")
         RegistryPath    = $item.Name
     }
     if ($item.GetValue("DisplayName")) {
@@ -46,6 +47,7 @@ foreach ($a in $list) {
         DisplayVersion  = $item.GetValue("DisplayVersion")
         InstallLocation = $item.GetValue("InstallLocation")
         InstallDate     = BetterDateFormat -date $item
+        UninstallString = $item.GetValue("UninstallString")
         RegistryPath    = $item.Name
     }
     if ($item.GetValue("DisplayName")) {
@@ -53,14 +55,4 @@ foreach ($a in $list) {
         $SoftwareList += $SoftwareObject
     }    
 }
-$SoftwareList
-
-#Start Menu
-
-$StartMenu = Get-ChildItem "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\" -Recurse | ? {$_.Name -match ".lnk"}
-foreach ($link in $StartMenu) {
-    $exe = (New-Object -ComObject WScript.Shell).CreateShortcut($link.FullName) | Select -Exp TargetPath
-    foreach ($item in $exe) {
-        (Get-Item $item).VersionInfo | Select -Property FileVersionRaw,ProductVersionRaw,CompanyName,FileName,FileVersion,ProductVersion
-    }
-}
+$SoftwareList | Sort DisplayName | Out-GridView
