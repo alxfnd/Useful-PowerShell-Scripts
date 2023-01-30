@@ -1,6 +1,7 @@
 cls
 $SoftwareList = @()
 $6432SoftwareList = @()
+$StartMenuList = @()
 
 Function BetterDateFormat {
     param($date)
@@ -55,4 +56,44 @@ foreach ($a in $list) {
         $SoftwareList += $SoftwareObject
     }    
 }
+
+#Start Menu
+
+$StartMenu = Get-ChildItem "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\" -Recurse | ? {$_.Name -match ".lnk"}
+foreach ($link in $StartMenu) {
+    $item                 = (New-Object -ComObject WScript.Shell).CreateShortcut($link.FullName) | Select -Exp TargetPath
+    $StartMenuItem        = (Get-Item $item -ErrorAction Ignore)
+    if ($StartMenuItem.Directory -notlike "C:\Windows\*") {
+        $StartMenuItemVersion = $StartMenuItem.VersionInfo | ? {$_.FileName -like "*.exe"} | Select -Property FileVersionRaw,ProductVersionRaw,CompanyName,FileName,FileVersion,ProductVersion,FileDescription
+        $StartMenuItemDate    = $StartMenuItem.CreationTime.ToShortDateString()
+        $Properties = [ordered] @{
+            DisplayName     = $StartMenuItemVersion.FileDescription
+            Publisher       = $StartMenuItemVersion.CompanyName
+            DisplayVersion  = $StartMenuItemVersion.FileVersion
+            InstallLocation = $StartMenuItem.DirectoryName
+            InstallDate     = $StartMenuItemDate
+            DiscoveryPath   = $StartMenuItemVersion.FileName
+        }
+        $SoftwareObject = New-Object psobject -Property $Properties
+        $SoftwareList += $SoftwareObject
+        $Properties = [ordered] @{
+            DisplayName       = $StartMenuItemVersion.FileDescription
+            Publisher         = $StartMenuItemVersion.CompanyName
+            DisplayVersion    = $StartMenuItemVersion.FileVersion
+            InstallLocation   = $StartMenuItem.DirectoryName
+            InstallDate       = $StartMenuItemDate
+            DiscoveryPath     = $StartMenuItemVersion.FileName
+            ProductVersion    = $StartMenuItemVersion.ProductVersion
+            FileVersionRaw    = $StartMenuItemVersion.FileVersionRaw
+            ProductVersionRaw = $StartMenuItemVersion.ProductVersionRaw
+        }
+        $StartMenuItemObject = New-Object psobject -Property $Properties
+        $StartMenuList += $StartMenuItemObject    
+    }
+}
+
+#$StartMenuList | Sort DisplayName
+
 $SoftwareList | Sort DisplayName | Out-GridView
+
+$SoftwareList | Sort DisplayName | Export-Csv "C:\tmp\soft.csv"
