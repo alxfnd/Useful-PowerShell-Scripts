@@ -1,0 +1,492 @@
+#Requires -RunAsAdministrator
+# PDQ Deploy
+# Set to 1 to enable deploy // 0 (or any other) for interactive
+
+##### EDIT THIS FOR PDQ ######
+#[int]$PDQDeploy = 1         #
+#[int]$InteractionLevel = 3  #
+##############################
+
+# 3 = Unattended Install
+# 4 = Unattended Removal
+
+# Start of non-PDQ Session
+if ($PDQDeploy -ne 1) {
+
+# Determine purpose of program
+
+do {
+Clear-Host
+Write-Host "Defender Registry Recommendations - Powershell Install`n`n`
+1 - Interactive Install
+2 - Interactive Uninstall/Key Removal
+3 - Unattended Install
+4 - Unattended Uninstall/Key Removal
+5 - Exit
+"
+$UserInput = Read-Host -Prompt "Select"
+try { $UserInput = [int]$UserInput }
+catch {}
+} while (($UserInput.GetType().Name -ne "Int32") -or [int]$UserInput -lt 1 -or [int]$UserInput -gt 5)
+
+
+
+# Validate user wants to continue before building arrays
+
+switch ($UserInput) {
+    5 { Exit 0 }
+    4 { $InteractionLevel = 4 }
+    3 { $InteractionLevel = 3 }
+    2 { $InteractionLevel = 2 }
+    1 { $InteractionLevel = 1 }
+    default {
+        Write-Host "Error. Invalid input.`nExiting..."
+        Start-Sleep 3
+        Exit 1
+    }
+}
+
+} #End of non-PDQ Session
+
+# Variables
+
+[System.Array]$RecommendedRegistryChanges = @()
+[System.Array]$Remediations = @()
+[System.Array]$ErrorLog = @()
+
+#region Create Remediation Object List
+
+#
+# Defender recommended registry changes
+#
+
+$RecommendedRegistryChanges = @(
+    @(
+    "Disable 'Autoplay' for all drives",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer",
+    "NoDriveTypeAutoRun",
+    "DWord",
+    255
+    ),
+    @(
+    "Disable 'Autoplay for non-volume devices'",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer",
+    "NoAutoplayfornonVolume",
+    "DWord",
+    1
+    ),
+    @(
+    "Set default behavior for 'AutoRun' to 'Enabled: Do not execute any autorun commands'",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer",
+    "NoAutorun",
+    "DWord",
+    1
+    )
+    @(
+    "Enable 'Local Security Authority (LSA) protection'",
+    "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa",
+    "RunAsPPL",
+    "DWord",
+    1
+    )
+    @(
+    "Set User Account Control (UAC) to automatically deny elevation requests",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
+    "ConsentPromptBehaviorUser",
+    "DWord",
+    0
+    )
+    @(
+    "Disable Anonymous enumeration of shares",
+    "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa",
+    "RestrictAnonymous",
+    "DWord",
+    1
+    )
+    @(
+    "Disable 'Enumerate administrator accounts on elevation'",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\CredUI",
+    "EnumerateAdministrators",
+    "DWord",
+    0
+    )
+    @(
+    "Enable 'Apply UAC restrictions to local accounts on network logons'",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
+    "LocalAccountTokenFilterPolicy",
+    "DWord",
+    0
+    )
+    @(
+    "Enable 'Require domain users to elevate when setting a network's location'",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections",
+    "NC_StdDomainUserSetLocation",
+    "DWord",
+    1
+    )
+    @(
+    "Set 'Minimum PIN length for startup' to '6 or more characters'",
+    "HKLM:\SOFTWARE\Policies\Microsoft\FVE",
+    "MinimumPIN",
+    "DWord",
+    6
+    )
+    @(
+    "Enable 'Require additional authentication at startup'",
+    "HKLM:\SOFTWARE\Policies\Microsoft\FVE",
+    "UseAdvancedStartup",
+    "DWord",
+    1
+    )
+    @(
+    "Disable 'Always install with elevated privileges'",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer",
+    "AlwaysInstallElevated",
+    "DWord",
+    0
+    )
+    @(
+    "Disable 'Allow Basic authentication' for WinRM Client",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client",
+    "AllowBasic",
+    "DWord",
+    0
+    )
+    @(
+    "Disable 'Allow Basic authentication' for WinRM Service",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service",
+    "AllowBasic",
+    "DWord",
+    0
+    )
+    @(
+    "Disable Solicited Remote Assistance",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services",
+    "fAllowToGetHelp",
+    "DWord",
+    0
+    )
+    @(
+    "Enable Local Admin password management",
+    "HKLM:\SOFTWARE\Policies\Microsoft Services\AdmPwd",
+    "AdmPwdEnabled",
+    "DWord",
+    1
+    )
+    @(
+    "Disable the local storage of passwords and credentials",
+    "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa",
+    "DisableDomainCreds",
+    "DWord",
+    1
+    )
+    @(
+    "Set LAN Manager authentication level to 'Send NTLMv2 response only. Refuse LM & NTLM'",
+    "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa",
+    "LmCompatibilityLevel",
+    "DWord",
+    5
+    )
+    @(
+    "Set IPv6 source routing to highest protection",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters",
+    "DisableIPSourceRouting",
+    "DWord",
+    2
+    )
+    @(
+    "Disable IP source routing",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters",
+    "DisableIPSourceRouting",
+    "DWord",
+    2
+    )
+    @( # THIS ONE BLOCKS SOFTWARE DRIVES
+    "Enable 'Microsoft network client: Digitally sign communications (always)'",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters",
+    "RequireSecuritySignature",
+    "DWord",
+    1
+    )
+    @(
+    "Disable Microsoft Defender Firewall notifications when programs are blocked for Private profile",
+    "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile",
+    "DisableNotifications",
+    "DWord",
+    1
+    )
+    @(
+    "Disable Microsoft Defender Firewall notifications when programs are blocked for Public profile",
+    "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile",
+    "DisableNotifications",
+    "DWord",
+    1
+    )
+    @(
+    "Disable merging of local Microsoft Defender Firewall rules with group policy firewall rules for the Public profile",
+    "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile",
+    "AllowLocalPolicyMerge",
+    "DWord",
+    0
+    )
+    @(
+    "Disable merging of local Microsoft Defender Firewall connection rules with group policy firewall rules for the Public profile",
+    "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile",
+    "AllowLocalIPsecPolicyMerge",
+    "DWord",
+    0
+    )
+    @(
+    "Disable 'Continue running background apps when Google Chrome is closed'",
+    "HKLM:\SOFTWARE\Policies\Google\Chrome",
+    "BackgroundModeEnabled",
+    "DWord",
+    0
+    )
+    @(
+    "Disable Chrome 'Password Manager'",
+    "HKLM:\SOFTWARE\Policies\Google\Chrome",
+    "PasswordManagerEnabled",
+    "DWord",
+    0
+    )
+    @(
+    "Enable Chrome 'Block third party cookies'",
+    "HKLM:\SOFTWARE\Policies\Google\Chrome",
+    "BlockThirdPartyCookies",
+    "DWord",
+    1
+    )
+    @(
+    "Disable Flash on Adobe Reader DC",
+    "HKLM:\SOFTWARE\Policies\Adobe\Acrobat Reader\DC\FeatureLockDown",
+    "bEnableFlash",
+    "DWord",
+    0
+    )
+    @(
+    "Disable JavaScript on Adobe Reader DC",
+    "HKLM:\SOFTWARE\Policies\Adobe\Acrobat Reader\DC\FeatureLockDown",
+    "bDisableJavaScript",
+    "DWord",
+    1
+    )
+    @(
+    "Disable running or installing downloaded software with invalid signature",
+    "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\Download",
+    "RunInvalidSignatures",
+    "DWord",
+    0
+    )
+    @(
+    "Block outdated ActiveX controls for Internet Explorer",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Ext",
+    "VersionCheckEnabled",
+    "DWord",
+    1
+    )
+)
+
+foreach ($RegistryChange in $RecommendedRegistryChanges) {
+    $Properties = [ordered]@{
+        Name  = $RegistryChange[0]
+        Key   = $RegistryChange[1]
+        Item  = $RegistryChange[2]
+        Type  = $RegistryChange[3]
+        Value = $RegistryChange[4]
+    }
+    $RegistryObject = New-Object -TypeName psobject -Property $Properties
+    $Remediations += $RegistryObject
+}
+
+#endregion
+
+#region Functions
+
+Function ChkRegExists{
+    param(
+        [string]$Key,
+        [string]$Item
+    )
+    if (Test-Path -Path $Key) {
+        $Result = $null -ne (Get-ItemProperty $Key).$Item
+        Return $Result
+    }
+}
+
+Function AmendRegItem {
+    param(
+        [int]$InteractionLevel,
+        [string]$Key,
+        [string]$Item,
+        [string]$Type,
+        [String]$Value
+    )
+    switch ($InteractionLevel) {
+        1 {
+            if (!(Test-Path -Path $Key)) {
+                try { New-Item -Path $Key -Force -ErrorAction Stop | Out-Null }
+                catch { Return 9 }
+            }
+            if (Test-Path -Path $Key) {
+                if (ChkRegExists $Key $Item) {
+                    if ((Get-ItemProperty -Path $Key).$Item -ne $Value) {
+                        try { Set-ItemProperty -Path $Key -Name $Item -Value $Value -Force -ErrorAction Stop | Out-Null }
+                        catch { Return 9 }
+                    }
+                }else{
+                    try { New-ItemProperty -Path $Key -Name $Item -PropertyType $Type -Value $Value -Force -ErrorAction Stop | Out-Null }
+                    catch { Return 9 }
+                }
+            }
+            Return 0
+        }
+        2 {
+            if (!(Test-Path -Path $Key)) {
+                Return 0
+            }
+            if (Test-Path -Path $Key) {
+                if (ChkRegExists $Key $Item) {
+                    try { Remove-ItemProperty -Path $Key -Name $Item -Force -ErrorAction Stop | Out-Null }
+                    catch { Return 9 }
+                }else{
+                    Return 0
+                }
+            }
+            Return 0
+        }
+    }
+}
+
+Function Interaction {
+    param ( 
+        $InteractionLevel,
+        $Object
+    )
+    
+    switch ($InteractionLevel) {
+        1 { $Action = "Install" }
+        2 { $Action = "Remove" }
+    }
+    do {
+        Clear-Host
+        Write-Host "Recommendation: "$Object.Name
+        if (!(Test-Path -Path $Object.Key -ErrorAction SilentlyContinue)) { 
+            $Colour = "Red"
+            Write-Host "`nKey does not exist." -ForegroundColor $Colour
+        }else{
+            if ($CurrentValue = $null -ne (Get-ItemProperty $Object.Key).($Object.Item)) {
+                $CurrentValue = (Get-ItemProperty $Object.Key).($Object.Item)
+            }else{
+                $CurrentValue = "N/A"
+            }
+            switch ($CurrentValue) {
+                $Object.Value { $Colour = "Green" }
+                default { $Colour = "Red" }
+            }
+            Write-Host ("`n"+$Object.Item+" = "+$CurrentValue) -ForegroundColor $Colour 
+        }
+
+        switch ($Action) {
+            "Install" {
+                switch ($Colour) {
+                    "Green" {
+                        Write-Host "`nKey already configured`n"
+                        pause
+                        Return 2
+                    }
+                    "Red" {
+                        Write-Host "`n$Action this key?`n1 - Yes`n2 - No`n"
+                        $UserInput = Read-Host "Select"
+                        try { $UserInput = [int]$UserInput }
+                        catch {}
+                        return $UserInput
+                    }
+                }
+            }
+            "Remove" {
+                switch ($Colour) {
+                    "Green" {
+                        Write-Host "`n$Action this key?`n1 - Yes`n2 - No`n"
+                        $UserInput = Read-Host "Select"
+                        try { $UserInput = [int]$UserInput }
+                        catch {}
+                        return $UserInput
+                    }
+                    "Red" {
+                        Write-Host "`nKey doesn't exist/not correct value.`n"
+                        pause
+                        Return 2
+                    }
+                }
+            }
+        }
+    } while (($UserInput.GetType().Name -ne "Int32") -or [int]$UserInput -lt 1 -or [int]$UserInput -gt 2)
+}
+
+#endregion
+
+# Top-level Run
+
+foreach ($Object in $Remediations) {
+    if ($InteractionLevel -gt 2) {
+        # UNATTENDED
+        ""
+        "Name: "+$Object.Name
+        "Key: "+$Object.Item
+        "Value: "+$Object.Value
+        switch (AmendRegItem -InteractionLevel ($InteractionLevel - 2) -Key $Object.Key -Item $Object.Item -Type $Object.Type -Value $Object.Value) {
+            0 {
+                switch ($InteractionLevel - 2) {
+                    1 {
+                        Write-Host "Applied key`n"
+                        $CurrentValue = (Get-ItemProperty $Object.Key).($Object.Item)
+                        Write-Host "`n"$Object.Item" = "$CurrentValue -ForegroundColor Green
+                    }
+                    2 {
+                        Write-Host "Key removed`n" -ForegroundColor Green
+                        "Remaining items in key: `n"
+                        Get-ItemProperty $Object.Key
+                    }
+                }    
+            }
+            9 {
+                Write-Host "`n#####`nError applying above action. Please investigate.`n#####`n"
+            }
+        }
+    }
+    else{
+        # INTERACTIVE
+        
+        switch (Interaction -InteractionLevel $InteractionLevel -Object $Object) {
+            1 {
+                switch (AmendRegItem -InteractionLevel $InteractionLevel -Key $Object.Key -Item $Object.Item -Type $Object.Type -Value $Object.Value) {
+                    0 { # Need to think down route where could be install or remove
+                        switch ($InteractionLevel) {
+                            1 {
+                                Write-Host "Applied key`n"
+                                $CurrentValue = (Get-ItemProperty $Object.Key).($Object.Item)
+                                Write-Host "`n"$Object.Item" = "$CurrentValue -ForegroundColor Green
+                                pause
+                            }
+                            2 {
+                                Write-Host "Key removed`n"
+                                "Remaining items in key: `n"
+                                Get-ItemProperty $Object.Key
+                                pause
+                            }
+                        }
+                    }
+                    9 {
+                        Write-Host "`n#####`nError applying action. Please investigate.`n#####`n"
+                        pause
+                    }
+                }
+            }
+            2 {
+                Write-Host "`nSkipping..."
+            }
+        }
+        
+    }
+}
